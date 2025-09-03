@@ -4,6 +4,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <WiFi.h>
 #include <functional>
 
 namespace DeviceIQ_Update {
@@ -67,7 +68,8 @@ namespace DeviceIQ_Update {
 
     class UpdateClient {
         private:
-            UpdateConfig _cfg;
+            const UpdateConfig _cfg;
+            bool _started = false;
             uint32_t _lastCheck = 0;
             EventCallback _onEvent = nullptr;
             ProgressCallback _onProgress = nullptr;
@@ -78,8 +80,12 @@ namespace DeviceIQ_Update {
             void _emit(Event e) { if (_onEvent) _onEvent(e); }
             void _emitError(Error e, const String& d = "") { if (_onError) _onError(e,d); }
             void _setupLanOta();
+
+            void _startIfReady() { if (_started) return; if (WiFi.status() != WL_CONNECTED) return; _startNow(); }
+            void _startNow();
         public:
-            bool begin(const UpdateConfig& cfg);
+            explicit UpdateClient(const UpdateConfig& cfg) : _cfg(cfg) { _emit(Event::Init); }
+
             void Control();
             bool CheckUpdateNow();
             bool UpdateFromURL(const String& url, const String& expectedSha256Hex = "");

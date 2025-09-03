@@ -19,26 +19,24 @@ static String sha256HexOf(const uint8_t* hash, size_t n) {
     return s;
 }
 
-bool UpdateClient::begin(const UpdateConfig& cfg) {
-    _cfg = cfg;
-    _emit(Event::Init);
-
-    #ifdef ARDUINO_ARCH_ESP32
-    if (_cfg.enableLanOta) _setupLanOta();
-    #endif
-    
-    return true;
-}
-
 void UpdateClient::Control() {
     #ifdef ARDUINO_ARCH_ESP32
         if (_cfg.enableLanOta) { ArduinoOTA.handle(); }
     #endif
+
+    _startIfReady();
     
     if (_cfg.checkIntervalMs && (millis() - _lastCheck > _cfg.checkIntervalMs)) {
         _lastCheck = millis();
         CheckUpdateNow();
     }
+}
+
+void UpdateClient::_startNow() {
+    #ifdef ARDUINO_ARCH_ESP32
+        if (_cfg.enableLanOta) _setupLanOta();
+    #endif
+    _started = true;
 }
 
 bool UpdateClient::CheckUpdateNow() {
