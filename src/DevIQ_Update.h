@@ -38,7 +38,7 @@ namespace DeviceIQ_Update {
         LanOta
     };
     
-    struct Config {
+    struct UpdateConfig {
         String model;
         String currentVersion;
         String manifestUrl;
@@ -67,7 +67,7 @@ namespace DeviceIQ_Update {
 
     class UpdateClient {
         private:
-            Config _cfg;
+            UpdateConfig _cfg;
             uint32_t _lastCheck = 0;
             EventCallback _onEvent = nullptr;
             ProgressCallback _onProgress = nullptr;
@@ -79,7 +79,7 @@ namespace DeviceIQ_Update {
             void _emitError(Error e, const String& d = "") { if (_onError) _onError(e,d); }
             void _setupLanOta();
         public:
-            bool begin(const Config& cfg);
+            bool begin(const UpdateConfig& cfg);
             void Control();
             bool CheckUpdateNow();
             bool UpdateFromURL(const String& url, const String& expectedSha256Hex = "");

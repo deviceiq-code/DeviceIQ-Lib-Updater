@@ -19,7 +19,7 @@ static String sha256HexOf(const uint8_t* hash, size_t n) {
     return s;
 }
 
-bool UpdateClient::begin(const Config& cfg) {
+bool UpdateClient::begin(const UpdateConfig& cfg) {
     _cfg = cfg;
     _emit(Event::Init);
 
