@@ -1,0 +1,14 @@
+{
+    "name": "DeviceIQ Update",
+    "version": "1.0.0",
+    "description": "Unified LAN & HTTP(S) OTA for ESP32 with manifest, SHA-256, and callbacks.",
+    "keywords": "ota, esp32, firmware, update, deviceiq",
+    "repository": { "type": "git", "url": "https://github.com/deviceiq-code/DeviceIQ-Lib-Update.git" },
+    "authors": [{ "name": "Fernando Almeida", "email": "fernando.almeida@me.com", "url": "https://www.linkedin.com/in/fealmeida" }],
+    "license": "MIT",
+    "frameworks": "arduino",
+    "platforms": "espressif32",
+    "dependencies": [
+        { "name": "bblanchon/ArduinoJson", "version": "^7.0.0" }
+    ]
+}
