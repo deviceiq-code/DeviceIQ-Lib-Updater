@@ -19,7 +19,7 @@ static String sha256HexOf(const uint8_t* hash, size_t n) {
     return s;
 }
 
-bool Client::begin(const Config& cfg) {
+bool UpdateClient::begin(const Config& cfg) {
     _cfg = cfg;
     _emit(Event::Init);
 
@@ -30,18 +30,18 @@ bool Client::begin(const Config& cfg) {
     return true;
 }
 
-void Client::Control() {
+void UpdateClient::Control() {
     #ifdef ARDUINO_ARCH_ESP32
         if (_cfg.enableLanOta) { ArduinoOTA.handle(); }
     #endif
     
     if (_cfg.checkIntervalMs && (millis() - _lastCheck > _cfg.checkIntervalMs)) {
         _lastCheck = millis();
-        checkNow();
+        CheckUpdateNow();
     }
 }
 
-bool Client::CheckUpdateNow() {
+bool UpdateClient::CheckUpdateNow() {
     if (WiFi.status() != WL_CONNECTED) {
         _emitError(Error::Wifi, "No WiFi");
         return false;
@@ -52,7 +52,7 @@ bool Client::CheckUpdateNow() {
     
     if (!_loadManifest(m)) return false;
 
-    if (!isNewer(m.version, _cfg.currentVersion)) {
+    if (!IsNewer(m.version, _cfg.currentVersion)) {
         _emit(Event::NoUpdate);
         return false;
     }
@@ -61,7 +61,7 @@ bool Client::CheckUpdateNow() {
     return _downloadAndApply(m);
 }
 
-bool Client::UpdateFromURL(const String& url, const String& expectedSha) {
+bool UpdateClient::UpdateFromURL(const String& url, const String& expectedSha) {
     Manifest m;
     m.url = url;
     m.sha256 = expectedSha;
@@ -70,7 +70,7 @@ bool Client::UpdateFromURL(const String& url, const String& expectedSha) {
     return _downloadAndApply(m);
 }
 
-bool Client::_loadManifest(Manifest& out) {
+bool UpdateClient::_loadManifest(Manifest& out) {
     HTTPClient http;
     std::unique_ptr<WiFiClient> cli;
     
@@ -99,7 +99,7 @@ bool Client::_loadManifest(Manifest& out) {
     String body = http.getString();
     http.end();
     
-    StaticJsonDocument<1024> doc;
+    JsonDocument doc;
     if (deserializeJson(doc, body)) {
         _emitError(Error::ManifestParse, "JSON");
         return false;
@@ -115,10 +115,10 @@ bool Client::_loadManifest(Manifest& out) {
         _emitError(Error::ModelMismatch, out.model);
         return false;
     }
-    return true; | "";
+    return true;
 }
 
-bool Client::_downloadAndApply(const Manifest& m) {
+bool UpdateClient::_downloadAndApply(const Manifest& m) {
     HTTPClient http; std::unique_ptr<WiFiClient> cli;
 
     if (_cfg.allowInsecure) {
@@ -214,27 +214,46 @@ bool Client::_downloadAndApply(const Manifest& m) {
     return true;
 }
 
-void Client::_setupLanOta() {
+void UpdateClient::_setupLanOta() {
     #ifdef ARDUINO_ARCH_ESP32
         ArduinoOTA.setHostname(_cfg.lanHostname.c_str());
         if (_cfg.lanPassword.length()) ArduinoOTA.setPassword(_cfg.lanPassword.c_str());
-        
-        ArduinoOTA.onStart([this] {
-            _emit(Event::LanReady);
-        });
 
-        ArduinoOTA.onEnd([this] {
+        // Sinaliza que o serviço OTA em LAN está ativo
+        ArduinoOTA.onStart([this]{ _emit(Event::Applying); });
+        ArduinoOTA.onEnd([this]{
             _emit(Event::Applying);
+            if (_cfg.autoReboot) { _emit(Event::Rebooting); delay(200); ESP.restart(); }
         });
-
-        ArduinoOTA.onError([this](auto) {
-            _emitError(Error::Error, "ArduinoOTA");
-        });
-
         ArduinoOTA.onProgress([this](unsigned p, unsigned t) {
             if (_onProgress) _onProgress(p, t);
         });
-        
+        ArduinoOTA.onError([this](ota_error_t e){
+            String d;
+            switch (e) {
+                case OTA_AUTH_ERROR: {
+                    d = "AUTH";
+                } break;
+                case OTA_BEGIN_ERROR: {
+                    d = "BEGIN";
+                } break;
+                case OTA_CONNECT_ERROR: {
+                    d = "CONNECT";
+                } break;
+                case OTA_RECEIVE_ERROR: { 
+                    d = "RECEIVE";
+                } break;
+                case OTA_END_ERROR: {
+                    d = "END";
+                } break;
+                default: {
+                    d = String("code ") + (int)e;
+                } break;
+            }
+            _emitError(Error::LanOta, "ArduinoOTA "+d);
+        });
+
         ArduinoOTA.begin();
+        _emit(Event::LanReady);
     #endif
 }

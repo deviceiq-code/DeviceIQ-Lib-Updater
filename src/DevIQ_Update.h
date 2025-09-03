@@ -34,7 +34,8 @@ namespace DeviceIQ_Update {
         UpdateWrite,
         ShaMismatch,
         UpdateEnd,
-        NotFinished
+        NotFinished,
+        LanOta
     };
     
     struct Config {
@@ -64,7 +65,7 @@ namespace DeviceIQ_Update {
     using ProgressCallback = std::function<void(size_t written, size_t total)>;
     using ErrorCallback    = std::function<void(Error, const String& detail)>;
 
-    class Client {
+    class UpdateClient {
         private:
             Config _cfg;
             uint32_t _lastCheck = 0;
