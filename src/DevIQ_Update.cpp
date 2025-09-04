@@ -10,7 +10,7 @@
 #include <mbedtls/md.h>
 
 #ifdef ARDUINO_ARCH_ESP32
-    #include <ArduinoOTA.h>
+  #include <ArduinoOTA.h>
 #endif
 
 using namespace DeviceIQ_Update;
@@ -43,12 +43,13 @@ static std::unique_ptr<WiFiClient> makeClient(const UpdateConfig& cfg, const Str
         s->setCACert(cfg.rootCA_PEM);
         return std::unique_ptr<WiFiClient>(s.release());
     }
+
     return nullptr;
 }
 
 void UpdateClient::Control() {
     _startIfReady();
-    
+
     #ifdef ARDUINO_ARCH_ESP32
         if (_started && _cfg.enableLanOta) {
             ArduinoOTA.handle();
@@ -68,6 +69,62 @@ void UpdateClient::_startNow() {
     _started = true;
 }
 
+bool UpdateClient::CheckForUpdate(Manifest& out, bool* hasUpdate, bool* forceUpdate) {
+    _startIfReady();
+    if (WiFi.status() != WL_CONNECTED) {
+        _emitError(Error::Wifi, "No WiFi");
+        return false;
+    }
+
+    _emit(Event::Checking);
+
+    HTTPClient http;
+    auto cli = makeClient(_cfg, _cfg.manifestUrl);
+    if (!cli) { _emitError(Error::HttpBegin, "HTTPS requires rootCA or allowInsecure"); return false; }
+
+    if (!http.begin(*cli, _cfg.manifestUrl)) { _emitError(Error::ManifestDownload, "begin()"); return false; }
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.addHeader("Accept-Encoding", "identity", true, true);
+    http.setTimeout(_cfg.httpTimeoutMs);
+
+    int code = http.GET();
+    if (code != HTTP_CODE_OK) {
+        _emitError(Error::ManifestDownload, String("HTTP ") + code);
+        http.end();
+        return false;
+    }
+
+    String body = http.getString();
+    http.end();
+
+    StaticJsonDocument<1024> doc;
+    auto err = deserializeJson(doc, body);
+    if (err) { _emitError(Error::ManifestParse, err.c_str()); return false; }
+
+    // Seu schema (chaves com maiúsculas e espaço)
+    out.model      = doc["Model"]       | "";
+    out.version    = doc["Version"]     | "";
+    out.minVersion = doc["Min Version"] | "0.0.0";
+    out.url        = doc["URL"]         | "";
+    out.sha256     = doc["SHA256"]      | "";
+
+    if (!out.model.equalsIgnoreCase(_cfg.model)) { _emitError(Error::ModelMismatch, out.model); return false; }
+    if (out.url.length() == 0) { _emitError(Error::ManifestParse, "Empty url"); return false; }
+
+    // Cache para getters
+    _lastManifest = out;
+    _hasManifest  = true;
+
+    const bool available = IsNewer(out.version, _cfg.currentVersion);
+    const bool forced    = IsNewer(out.minVersion, _cfg.currentVersion);
+
+    if (hasUpdate)   *hasUpdate   = available;
+    if (forceUpdate) *forceUpdate = forced;
+
+    _emit(available ? Event::NewVersion : Event::NoUpdate);
+    return true;
+}
+
 bool UpdateClient::CheckUpdateNow() {
     _startIfReady();
     if (WiFi.status() != WL_CONNECTED) {
@@ -79,6 +136,10 @@ bool UpdateClient::CheckUpdateNow() {
 
     Manifest m;
     if (!_loadManifest(m)) return false;
+
+    // cache
+    _lastManifest = m;
+    _hasManifest  = true;
 
     if (!IsNewer(m.version, _cfg.currentVersion)) {
         _emit(Event::NoUpdate);
@@ -101,52 +162,43 @@ bool UpdateClient::UpdateFromURL(const String& url, const String& expectedSha) {
     return _downloadAndApply(m);
 }
 
+bool UpdateClient::InstallLatest() {
+    if (!_hasManifest || _lastManifest.url.length() == 0) {
+        _emitError(Error::ManifestParse, "No cached manifest");
+        return false;
+    }
+    return _downloadAndApply(_lastManifest);
+}
+
 bool UpdateClient::_loadManifest(Manifest& out) {
     HTTPClient http;
 
     auto cli = makeClient(_cfg, _cfg.manifestUrl);
-    if (!cli) {
-        _emitError(Error::HttpBegin, "HTTPS requires rootCA or allowInsecure");
-        return false;
-    }
+    if (!cli) { _emitError(Error::HttpBegin, "HTTPS requires rootCA or allowInsecure"); return false; }
 
-    if (!http.begin(*cli, _cfg.manifestUrl)) {
-        _emitError(Error::ManifestDownload, "begin()");
-        return false;
-    }
+    if (!http.begin(*cli, _cfg.manifestUrl)) { _emitError(Error::ManifestDownload, "begin()"); return false; }
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.addHeader("Accept-Encoding", "identity", true, true);
     http.setTimeout(_cfg.httpTimeoutMs);
 
     int code = http.GET();
-    if (code != HTTP_CODE_OK) {
-        _emitError(Error::ManifestDownload, String("HTTP ") + code);
-        http.end();
-        return false;
-    }
+    if (code != HTTP_CODE_OK) { _emitError(Error::ManifestDownload, String("HTTP ") + code); http.end(); return false; }
 
     String body = http.getString();
     http.end();
 
     StaticJsonDocument<1024> doc;
     auto err = deserializeJson(doc, body);
-    if (err) {
-        _emitError(Error::ManifestParse, err.c_str());
-        return false;
-    }
+    if (err) { _emitError(Error::ManifestParse, err.c_str()); return false; }
 
-    out.model = doc["model"] | "";
-    out.version = doc["version"] | "";
-    out.minVersion = doc["min_version"] | "0.0.0";
-    out.url = doc["url"] | "";
-    out.sha256 = doc["sha256"] | "";
+    out.model      = doc["Model"]       | "";
+    out.version    = doc["Version"]     | "";
+    out.minVersion = doc["Min Version"] | "0.0.0";
+    out.url        = doc["URL"]         | "";
+    out.sha256     = doc["SHA256"]      | "";
 
-    if (!out.model.equalsIgnoreCase(_cfg.model)) {
-        _emitError(Error::ModelMismatch, out.model);
-        return false;
-    }
-    if (out.url.length() == 0) {
-        _emitError(Error::ManifestParse, "Empty url");
-        return false;
-    }
+    if (!out.model.equalsIgnoreCase(_cfg.model)) { _emitError(Error::ModelMismatch, out.model); return false; }
+    if (out.url.length() == 0) { _emitError(Error::ManifestParse, "Empty url"); return false; }
 
     return true;
 }
@@ -155,15 +207,10 @@ bool UpdateClient::_downloadAndApply(const Manifest& m) {
     HTTPClient http;
 
     auto cli = makeClient(_cfg, m.url);
-    if (!cli) {
-        _emitError(Error::HttpBegin, "HTTPS requires rootCA or allowInsecure");
-        return false;
-    }
+    if (!cli) { _emitError(Error::HttpBegin, "HTTPS requires rootCA or allowInsecure"); return false; }
 
-    if (!http.begin(*cli, m.url)) {
-        _emitError(Error::HttpBegin, "begin()");
-        return false;
-    }
+    if (!http.begin(*cli, m.url)) { _emitError(Error::HttpBegin, "begin()"); return false; }
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(_cfg.httpTimeoutMs);
 
     int code = http.GET();
@@ -183,6 +230,7 @@ bool UpdateClient::_downloadAndApply(const Manifest& m) {
     }
     _emit(Event::Downloading);
 
+    // SHA-256 on-the-fly
     mbedtls_md_context_t ctx;
     const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md_init(&ctx);

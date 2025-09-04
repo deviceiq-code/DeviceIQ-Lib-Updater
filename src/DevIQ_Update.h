@@ -76,6 +76,9 @@ namespace DeviceIQ_Update {
             ProgressCallback _onProgress = nullptr;
             ErrorCallback _onError = nullptr;
 
+            Manifest _lastManifest{};
+            bool _hasManifest = false;
+
             bool _loadManifest(Manifest& out);
             bool _downloadAndApply(const Manifest& m);
 
@@ -90,15 +93,25 @@ namespace DeviceIQ_Update {
             explicit UpdateClient(const UpdateConfig& cfg) : _cfg(cfg) { _emit(Event::Init); }
 
             void Control();
+
+            bool CheckForUpdate(Manifest& out, bool* hasUpdate = nullptr, bool* forceUpdate = nullptr);
             bool CheckUpdateNow();
             bool UpdateFromURL(const String& url, const String& expectedSha256Hex = "");
+            bool InstallLatest();
 
-            void OnEvent(EventCallback cb) { _onEvent = cb; }
-            void OnProgress(ProgressCallback cb) { _onProgress = cb; }
-            void OnError(ErrorCallback cb) { _onError = cb; }
+            inline String ManifestURL() const { return _cfg.manifestUrl; }
+            inline String LatestVersion() const { return _lastManifest.version; }
+            inline String LatestMinVersion() const { return _lastManifest.minVersion; }
+            inline String LatestUrl() const { return _lastManifest.url; }
+            inline String LatestSha256() const { return _lastManifest.sha256; }
+            inline bool HasCachedManifest() const { return _hasManifest; }
 
-            static bool IsNewer(const String& a, const String& b) { int aM = 0, aN = 0, aP = 0, bM = 0, bN = 0, bP = 0; sscanf(a.c_str(), "%d.%d.%d", &aM, &aN, &aP); sscanf(b.c_str(), "%d.%d.%d", &bM, &bN, &bP); if (aM != bM) return aM > bM; if (aN != bN) return aN > bN; return aP > bP; }
-        };
+            void OnEvent(EventCallback cb)    { _onEvent = cb; }
+            void OnProgress(ProgressCallback cb){ _onProgress = cb; }
+            void OnError(ErrorCallback cb)    { _onError = cb; }
+
+            static bool IsNewer(const String& a, const String& b) { int aM=0,aN=0,aP=0, bM=0,bN=0,bP=0; sscanf(a.c_str(), "%d.%d.%d", &aM,&aN,&aP); sscanf(b.c_str(), "%d.%d.%d", &bM,&bN,&bP); if (aM!=bM) return aM>bM; if (aN!=bN) return aN>bN; return aP>bP;}
+    };
 }
 
 #endif
