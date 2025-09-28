@@ -56,7 +56,7 @@ void UpdateClient::Control() {
         }
     #endif
 
-    if (_cfg.checkIntervalMs && (millis() - _lastCheck > _cfg.checkIntervalMs)) {
+    if (_cfg.checkInterval && (millis() - _lastCheck > _cfg.checkInterval)) {
         _lastCheck = millis();
         CheckUpdateNow();
     }
@@ -85,7 +85,7 @@ bool UpdateClient::CheckForUpdate(Manifest& out, bool* hasUpdate, bool* forceUpd
     if (!http.begin(*cli, _cfg.manifestUrl)) { _emitError(Error::ManifestDownload, "begin()"); return false; }
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.addHeader("Accept-Encoding", "identity", true, true);
-    http.setTimeout(_cfg.httpTimeoutMs);
+    http.setTimeout(_cfg.httpTimeout);
 
     int code = http.GET();
     if (code != HTTP_CODE_OK) {
@@ -97,7 +97,7 @@ bool UpdateClient::CheckForUpdate(Manifest& out, bool* hasUpdate, bool* forceUpd
     String body = http.getString();
     http.end();
 
-    StaticJsonDocument<1024> doc;
+    JsonDocument doc;
     auto err = deserializeJson(doc, body);
     if (err) { _emitError(Error::ManifestParse, err.c_str()); return false; }
 
@@ -179,7 +179,7 @@ bool UpdateClient::_loadManifest(Manifest& out) {
     if (!http.begin(*cli, _cfg.manifestUrl)) { _emitError(Error::ManifestDownload, "begin()"); return false; }
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.addHeader("Accept-Encoding", "identity", true, true);
-    http.setTimeout(_cfg.httpTimeoutMs);
+    http.setTimeout(_cfg.httpTimeout);
 
     int code = http.GET();
     if (code != HTTP_CODE_OK) { _emitError(Error::ManifestDownload, String("HTTP ") + code); http.end(); return false; }
@@ -187,7 +187,7 @@ bool UpdateClient::_loadManifest(Manifest& out) {
     String body = http.getString();
     http.end();
 
-    StaticJsonDocument<1024> doc;
+    JsonDocument doc;
     auto err = deserializeJson(doc, body);
     if (err) { _emitError(Error::ManifestParse, err.c_str()); return false; }
 
@@ -211,7 +211,7 @@ bool UpdateClient::_downloadAndApply(const Manifest& m) {
 
     if (!http.begin(*cli, m.url)) { _emitError(Error::HttpBegin, "begin()"); return false; }
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(_cfg.httpTimeoutMs);
+    http.setTimeout(_cfg.httpTimeout);
 
     int code = http.GET();
     if (code != HTTP_CODE_OK) {

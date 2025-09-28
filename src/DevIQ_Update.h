@@ -48,8 +48,8 @@ namespace DeviceIQ_Update {
         bool enableLanOta = false;
         String lanHostname = "deviceiq";
         String lanPassword = "";
-        uint32_t checkIntervalMs = 6UL*60UL*60UL*1000UL; // 6h
-        uint32_t httpTimeoutMs = 15000;
+        uint32_t checkInterval = 21600; // 6h
+        uint32_t httpTimeout = 15;
         size_t streamBufSize = 4096;
         bool autoReboot = true;
     };
